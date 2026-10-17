@@ -8,9 +8,12 @@
 //! Код выхода: 0 — всё живо (или только замечания), 1 — деградация, 2 — критично.
 //! Это даёт прибору голос в cron и в CI.
 
-use homeostat::sources;
+use homeostat::{dashboard, sources};
 use homeostat::{now, report, Facts, Report, Severity, System};
+use std::io::{BufRead, BufReader, Write};
+use std::net::{TcpListener, TcpStream};
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::thread::sleep;
 use std::time::Duration;
 
@@ -19,6 +22,7 @@ fn main() {
     let code = match args.first().map(String::as_str) {
         Some("snapshot") => cmd_snapshot(&args[1..]),
         Some("watch") => cmd_watch(&args[1..]),
+        Some("serve") => cmd_serve(&args[1..]),
         Some("demo") => cmd_demo(),
         Some("--help") | Some("-h") | None => {
             print_help();
@@ -40,6 +44,7 @@ fn print_help() {
   snapshot [--kanban PATH] [--diagnostics PATH] [--team DIR]
            [--tupleboard PATH] [--outlook PATH] [--window S] [--json]
   watch    --every S [те же входы]
+  serve    [--host H] [--port 8901] [те же входы]   — живая панель в браузере
   demo
 
 Входы не запускаются и не меняются — только читаются:
@@ -248,6 +253,75 @@ fn cmd_watch(args: &[String]) -> i32 {
         );
         sleep(Duration::from_secs(every));
     }
+}
+
+// --- живая панель ----------------------------------------------------------------
+fn cmd_serve(args: &[String]) -> i32 {
+    let opts = Opts::parse(args);
+    let host = opts.flag("host").unwrap_or("127.0.0.1").to_string();
+    let port = opts.number("port").unwrap_or(8901) as u16;
+    let listener = match TcpListener::bind((host.as_str(), port)) {
+        Ok(listener) => listener,
+        Err(err) => {
+            eprintln!("не удалось занять {host}:{port}: {err}");
+            return 1;
+        }
+    };
+    println!(
+        "панель: http://{host}:{port}/  (пересчёт на каждый запрос, страница обновляется каждые 15с)"
+    );
+    let shared: Arc<Vec<String>> = Arc::new(args.to_vec());
+    for stream in listener.incoming() {
+        match stream {
+            Ok(stream) => {
+                let shared = Arc::clone(&shared);
+                std::thread::spawn(move || {
+                    if let Err(err) = serve_one(stream, &shared) {
+                        eprintln!("соединение: {err}");
+                    }
+                });
+            }
+            Err(err) => eprintln!("accept: {err}"),
+        }
+    }
+    0
+}
+
+fn serve_one(mut stream: TcpStream, args: &Arc<Vec<String>>) -> std::io::Result<()> {
+    stream.set_read_timeout(Some(Duration::from_secs(10)))?;
+    stream.set_write_timeout(Some(Duration::from_secs(10)))?;
+    let mut reader = BufReader::new(stream.try_clone()?);
+    let mut line = String::new();
+    if reader.read_line(&mut line)? == 0 {
+        return Ok(());
+    }
+    let path = line.split_whitespace().nth(1).unwrap_or("/").to_string();
+    loop {
+        let mut header = String::new();
+        if reader.read_line(&mut header)? == 0 || header.trim().is_empty() {
+            break;
+        }
+    }
+    let opts = Opts::parse(args);
+    let (built, not_connected) = build(&opts);
+    let (ctype, body) = if path.starts_with("/report.json") {
+        (
+            "application/json; charset=utf-8",
+            serde_json::to_string_pretty(&built).unwrap_or_else(|_| "{}".to_string()),
+        )
+    } else {
+        (
+            "text/html; charset=utf-8",
+            dashboard::render(&built, &not_connected),
+        )
+    };
+    let head = format!(
+        "HTTP/1.1 200 OK\r\nContent-Type: {ctype}\r\nContent-Length: {}\r\nConnection: close\r\nCache-Control: no-store\r\n\r\n",
+        body.len()
+    );
+    stream.write_all(head.as_bytes())?;
+    stream.write_all(body.as_bytes())?;
+    stream.flush()
 }
 
 // --- демонстрация ---------------------------------------------------------------
