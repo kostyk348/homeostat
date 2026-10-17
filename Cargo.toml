@@ -1,0 +1,18 @@
+[package]
+name = "homeostat"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+description = "Прибор живучести команды: показывает, какой контур управления разомкнут (VSM Бира)"
+license = "MIT"
+readme = "README.md"
+
+# Зависимости — только про формат данных (JSON). Ни HTTP-клиента, ни async-рантайма:
+# прибор читает файлы и считает, ему больше ничего не нужно.
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[profile.release]
+panic = "abort"
+lto = true
