@@ -292,8 +292,9 @@ fn cmd_demo() -> i32 {
     overloaded.running = 1;
     overloaded.in_flight = 0;
     overloaded.confirmed = 0;
+    overloaded.closed = 4;
     overloaded.ready = 12;
-    overloaded.stranded = 6;
+    overloaded.stranded = 0; // не залипание, а именно перегрузка объёмом
     overloaded.unverifiable = 3;
     overloaded.escalations = 4;
     overloaded.algedonic = 3;

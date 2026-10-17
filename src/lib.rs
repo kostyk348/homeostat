@@ -293,6 +293,20 @@ pub fn diagnose(facts: &Facts) -> Vec<Diagnosis> {
         ));
     }
 
+    if facts.unverifiable > 0 {
+        out.push(diagnosis(
+            "S3STAR_BLIND",
+            System::S3Star,
+            Severity::Degraded,
+            format!(
+                "аудит слеп: {} доказательств(а) проверить не удалось",
+                facts.unverifiable
+            ),
+            vec![format!("unverifiable = {}", facts.unverifiable)],
+            "доказательство без способа проверки — это заявление; нужен артефакт, который можно перепроверить",
+        ));
+    }
+
     // --- S4: среда -------------------------------------------------------------
     if facts.environmental == 0 {
         out.push(diagnosis(
@@ -468,6 +482,19 @@ mod tests {
             .unwrap();
         assert_eq!(s3.severity, Severity::Critical);
         assert!(s3.advice.contains("POSIWID"));
+    }
+
+    #[test]
+    fn unverifiable_evidence_is_named_blindness() {
+        let mut facts = healthy();
+        facts.unverifiable = 3;
+        let found = diagnose(&facts);
+        let blind = found
+            .iter()
+            .find(|item| item.code == "S3STAR_BLIND")
+            .unwrap();
+        assert_eq!(blind.severity, Severity::Degraded);
+        assert!(blind.text.contains('3'));
     }
 
     #[test]
