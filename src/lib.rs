@@ -99,8 +99,27 @@ pub struct InputState {
     pub note: String,
 }
 
+/// Договор так, как его видно на доске (одна строка = одна карточка).
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct PactRow {
+    pub id: String,
+    pub capability: String,
+    pub priority: i64,
+    pub accepts: String,
+    #[serde(default)]
+    pub owner: String,
+    #[serde(default)]
+    pub lease_in: u64,
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Facts {
+    /// Договоры, ждущие исполнителя.
+    #[serde(default)]
+    pub pacts_waiting: Vec<PactRow>,
+    /// Договоры, взятые в работу (у кого и на сколько).
+    #[serde(default)]
+    pub pacts_in_work: Vec<PactRow>,
     // S1 операции
     pub running: usize,
     pub assignees_working: usize,
@@ -422,6 +441,8 @@ mod tests {
             escalations: 0,
             algedonic: 0,
             algedonic_limit: 3,
+            pacts_waiting: vec![],
+            pacts_in_work: vec![],
             inputs: vec![],
         }
     }

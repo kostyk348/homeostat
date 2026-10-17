@@ -63,6 +63,52 @@ pub fn render(report: &Report, not_connected: &[String]) -> String {
         ));
     }
 
+    let mut waiting = String::new();
+    if report.facts.pacts_waiting.is_empty() {
+        waiting.push_str(r#"<div class="foot">договоров в ожидании нет</div>"#);
+    } else {
+        waiting.push_str(
+            r#"<table><tr><th>id</th><th>способность</th><th>приоритет</th><th>приёмка</th></tr>"#,
+        );
+        for pact in &report.facts.pacts_waiting {
+            waiting.push_str(&format!(
+                r#"<tr><td class="name">{id}</td><td>{cap}</td><td>{prio}</td><td class="src">{accepts}</td></tr>"#,
+                id = escape(&pact.id),
+                cap = escape(&pact.capability),
+                prio = pact.priority,
+                accepts = escape(&pact.accepts)
+            ));
+        }
+        waiting.push_str("</table>");
+    }
+
+    let mut in_work = String::new();
+    if report.facts.pacts_in_work.is_empty() {
+        in_work.push_str(r#"<div class="foot">никто не держит договор</div>"#);
+    } else {
+        in_work.push_str(
+            r#"<table><tr><th>id</th><th>способность</th><th>у кого</th><th>аренда</th></tr>"#,
+        );
+        for pact in &report.facts.pacts_in_work {
+            in_work.push_str(&format!(
+                r#"<tr><td class="name">{id}</td><td>{cap}</td><td class="src">{owner}</td><td>{lease}s</td></tr>"#,
+                id = escape(&pact.id),
+                cap = escape(&pact.capability),
+                owner = escape(&pact.owner),
+                lease = pact.lease_in
+            ));
+        }
+        in_work.push_str("</table>");
+    }
+
+    let closed = format!(
+        r#"<div class="nums"><div>принято <b>{accepted}</b></div><div>расхождений <b>{bad}</b></div><div>не проверено <b>{blind}</b></div></div>
+           <div class="foot">по журналу закрытий командного слоя за окно</div>"#,
+        accepted = report.facts.confirmed,
+        bad = report.facts.mismatched,
+        blind = report.facts.unverifiable
+    );
+
     let mut diagnoses = String::new();
     if report.diagnoses.is_empty() {
         diagnoses
@@ -154,6 +200,8 @@ pub fn render(report: &Report, not_connected: &[String]) -> String {
   td.name {{ font-weight:600; white-space:nowrap; }}
   td.src, td.note {{ color:#8b949e; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:11px; }}
   .foot {{ color:#6e7681; font-size:11px; margin-top:6px; }}
+  .board {{ display:grid; grid-template-columns:1.2fr 1.2fr .8fr; gap:14px; }}
+  .colhead {{ font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:#8b949e; margin-bottom:6px; }}
 </style></head><body>
   <h1>homeostat <span class="verdict">{verdict_word}</span></h1>
   <div class="sub">окно {window}с · снято {taken} (unix) · обновление каждые 15с · код выхода {exit_code}</div>
@@ -173,6 +221,16 @@ pub fn render(report: &Report, not_connected: &[String]) -> String {
     </div>
     <div class="foot">demand = ready + stranded + unverifiable + mismatched + algedonic + escalations;
       capacity = running + confirmed + in_flight</div>
+  </div>
+
+
+  <div class="panel">
+    <h2>работа: договоры как карточки</h2>
+    <div class="board">
+      <div><div class="colhead">ждут исполнителя</div>{waiting}</div>
+      <div><div class="colhead">в работе</div>{in_work}</div>
+      <div><div class="colhead">закрыто</div>{closed}</div>
+    </div>
   </div>
 
   <div class="panel">
@@ -201,6 +259,9 @@ pub fn render(report: &Report, not_connected: &[String]) -> String {
         capacity = report.variety.capacity,
         in_space = report.facts.in_space,
         in_flight = report.facts.in_flight,
+        waiting = waiting,
+        in_work = in_work,
+        closed = closed,
         diagnoses = diagnoses,
         inputs = inputs
     )

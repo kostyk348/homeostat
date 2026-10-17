@@ -3,7 +3,7 @@
 //! Каждый источник возвращает [`InputState`] — и если файла нет, это видно в отчёте,
 //! а не превращается в ноль. Молчаливый ноль — главный способ соврать в мониторинге.
 
-use crate::{now, Facts, InputState};
+use crate::{now, Facts, InputState, PactRow};
 use serde_json::Value;
 use std::fs;
 use std::path::Path;
@@ -214,6 +214,65 @@ pub fn load_tupleboard(path: &Path, facts: &mut Facts) -> InputState {
     state
 }
 
+fn pact_row(fields: &Value, owner: &str, lease_in: u64) -> Option<PactRow> {
+    let row = fields.as_array()?;
+    if row.len() != 5 || row[0].as_str()? != "pact" {
+        return None;
+    }
+    let contract = row[4].clone();
+    let accepts = format!(
+        "{}: {}",
+        contract["accepts"]["kind"].as_str().unwrap_or("?"),
+        contract["accepts"]["value"].as_str().unwrap_or("?")
+    );
+    Some(PactRow {
+        id: row[3].as_str().unwrap_or("?").to_string(),
+        capability: row[1].as_str().unwrap_or("?").to_string(),
+        priority: row[2].as_i64().unwrap_or(0),
+        accepts,
+        owner: owner.to_string(),
+        lease_in,
+    })
+}
+
+/// Доска договоров: `tupleboard` `GET /tuples`, снятый в файл.
+pub fn load_pacts(path: &Path, facts: &mut Facts) -> InputState {
+    let Ok(raw) = fs::read_to_string(path) else {
+        return unreadable(path, facts, "pacts");
+    };
+    let Ok(value) = serde_json::from_str::<Value>(&raw) else {
+        return unreadable(path, facts, "pacts");
+    };
+    if let Some(rows) = value.get("in_space").and_then(Value::as_array) {
+        for row in rows {
+            if let Some(pact) = pact_row(&row["fields"], "", 0) {
+                facts.pacts_waiting.push(pact);
+            }
+        }
+    }
+    if let Some(rows) = value.get("in_flight").and_then(Value::as_array) {
+        for row in rows {
+            let owner = row["owner"].as_str().unwrap_or("anonymous");
+            let lease = row["deadline_in"].as_u64().unwrap_or(0);
+            if let Some(pact) = pact_row(&row["fields"], owner, lease) {
+                facts.pacts_in_work.push(pact);
+            }
+        }
+    }
+    let state = input(
+        "pacts",
+        &path.display().to_string(),
+        true,
+        format!(
+            "ждут {}, в работе {}",
+            facts.pacts_waiting.len(),
+            facts.pacts_in_work.len()
+        ),
+    );
+    facts.inputs.push(state.clone());
+    state
+}
+
 /// Среда: изменения снаружи (например, события сканера архива).
 pub fn load_outlook(path: &Path, window: u64, facts: &mut Facts) -> InputState {
     let cutoff = now().saturating_sub(window);
@@ -357,6 +416,39 @@ mod tests {
         let mut facts = Facts::default();
         load_tupleboard(&path, &mut facts);
         assert_eq!((facts.in_space, facts.in_flight, facts.refusals), (3, 2, 4));
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn pact_board_is_read_from_tuples_dump() {
+        let dir = temp_dir("pacts");
+        let path = dir.join("tuples.json");
+        fs::write(
+            &path,
+            serde_json::json!({
+                "in_space": [
+                    {"fields": ["pact", "rust", 5, "p1", {"id":"p1","capability":"rust","accepts":{"kind":"file","value":"/tmp/a"}}]},
+                    {"fields": ["что-то", "другое"]}
+                ],
+                "in_flight": [
+                    {"owner": "cell-1", "deadline_in": 42,
+                     "fields": ["pact", "python", 1, "p2", {"id":"p2","capability":"python","accepts":{"kind":"url","value":"https://x"}}]}
+                ]
+            })
+            .to_string(),
+        )
+        .unwrap();
+        let mut facts = Facts::default();
+        load_pacts(&path, &mut facts);
+        assert_eq!(
+            facts.pacts_waiting.len(),
+            1,
+            "только договоры, не любые кортежи"
+        );
+        assert_eq!(facts.pacts_waiting[0].id, "p1");
+        assert_eq!(facts.pacts_waiting[0].accepts, "file: /tmp/a");
+        assert_eq!(facts.pacts_in_work[0].owner, "cell-1");
+        assert_eq!(facts.pacts_in_work[0].lease_in, 42);
         let _ = fs::remove_dir_all(&dir);
     }
 

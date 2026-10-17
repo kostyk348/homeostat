@@ -41,7 +41,7 @@ fn print_help() {
     println!(
         "homeostat — прибор живучести команды (VSM Бира, закон Эшби, POSIWID)
 
-  snapshot [--kanban PATH] [--diagnostics PATH] [--team DIR]
+  snapshot [--kanban PATH] [--diagnostics PATH] [--team DIR] [--pacts PATH]
            [--tupleboard PATH] [--outlook PATH] [--window S] [--json]
   watch    --every S [те же входы]
   serve    [--host H] [--port 8901] [те же входы]   — живая панель в браузере
@@ -51,6 +51,7 @@ fn print_help() {
   kanban       вывод `hermes kanban list --json`
   diagnostics  вывод `hermes kanban diagnostics --json`
   team         каталог журналов tupleboard (closed/escalations/algedonic/policy)
+  pacts        GET /tuples из tupleboard (доска договоров)
   tupleboard   GET /stats, сохранённый в файл
   outlook      jsonl внешних изменений (например, события сканера архива)
 
@@ -130,6 +131,9 @@ fn collect(opts: &Opts) -> (Facts, Vec<String>) {
     });
     connect("tupleboard", opts.flag("tupleboard"), &mut |path| {
         sources::load_tupleboard(path, &mut facts);
+    });
+    connect("pacts", opts.flag("pacts"), &mut |path| {
+        sources::load_pacts(path, &mut facts);
     });
     connect("outlook", opts.flag("outlook"), &mut |path| {
         sources::load_outlook(path, window, &mut facts);
@@ -351,6 +355,8 @@ fn cmd_demo() -> i32 {
         escalations: 0,
         algedonic: 0,
         algedonic_limit: 3,
+        pacts_waiting: vec![],
+        pacts_in_work: vec![],
         inputs: vec![],
     };
     let mut open = healthy.clone();
