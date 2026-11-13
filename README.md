@@ -1,8 +1,22 @@
+<div align="center">
+
+<img src="docs/banner.svg" alt="homeostat banner" width="1000">
+
 # homeostat
 
-Прибор живучести команды агентов: показывает, **какой контур управления разомкнут**.
-Не доска, не очередь, не планировщик — он ничего не выполняет и не хранит работу,
-он читает следы пяти контуров и ставит диагноз.
+### Прибор живучести команды агентов: показывает, какой контур управления разомкнут.
+
+[![CI](https://github.com/kostyk348/homeostat/actions/workflows/tests.yml/badge.svg)](https://github.com/kostyk348/homeostat/actions/workflows/tests.yml)
+[![Release](https://img.shields.io/github/v/release/kostyk348/homeostat?sort=semver&color=0ea5e9&label=release)](https://github.com/kostyk348/homeostat/releases)
+[![License](https://img.shields.io/badge/license-MIT-green)](https://github.com/kostyk348/homeostat/blob/main/LICENSE)
+[![Language](https://img.shields.io/badge/lang-Rust-blueviolet)](https://github.com/kostyk348/homeostat)
+
+![панель homeostat](docs/panel.png)
+
+</div>
+
+---
+
 
 Rust, две зависимости (`serde`, `serde_json`), без HTTP-клиента и без async: прибор читает
 файлы и считает.
